@@ -27,50 +27,71 @@ steps:
       - pull_request
       - push
 
-- name: ci-environment
-  image: plugins/docker
-  settings:
-    username:
-      from_secret: DOCKER_USER
-    password:
-      from_secret: DOCKER_PASSWORD
-    repo:
-      from_secret: DOCKER_REPO
-    auto_tag: true
-    dockerfile: pipeline/Dockerfile
-  when:
-    event:
-      - push
+# - name: ci-environment
+#   image: plugins/docker
+#   settings:
+#     username:
+#       from_secret: DOCKER_USER
+#     password:
+#       from_secret: DOCKER_PASSWORD
+#     repo:
+#       from_secret: DOCKER_REPO
+#     auto_tag: true
+#     dockerfile: pipeline/Dockerfile
+#   when:
+#     event:
+#       - push
+# 
+# - name: terraform_apply
+#   image: sjmiller609/helm-kubectl-terraform:latest
+#   environment:
+#     AWS_ACCESS_KEY_ID:
+#       from_secret: AWS_ACCESS_KEY_ID
+#     AWS_SECRET_ACCESS_KEY:
+#       from_secret: AWS_SECRET_ACCESS_KEY
+#   commands:
+#     - EXAMPLE=from_scratch pipeline/run_terraform.sh
+#   when:
+#     event:
+#       - push
+#     branch:
+#       - master
+# 
+# - name: terraform_destroy
+#   image: sjmiller609/helm-kubectl-terraform:latest
+#   environment:
+#     AWS_ACCESS_KEY_ID:
+#       from_secret: AWS_ACCESS_KEY_ID
+#     AWS_SECRET_ACCESS_KEY:
+#       from_secret: AWS_SECRET_ACCESS_KEY
+#   commands:
+#     - DESTROY=1 EXAMPLE=from_scratch pipeline/run_terraform.sh
+#   when:
+#     event:
+#       - push
+#     status:
+#       - failure
+#       - success
+#     branch:
+#       - master
 
-- name: terraform_apply
-  image: sjmiller609/helm-kubectl-terraform:latest
+- name: git_tag
+  image: docker:git
   environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: AWS_ACCESS_KEY_ID
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: AWS_SECRET_ACCESS_KEY
+    DEPLOY_KEY:
+      from_secret: DEPLOY_KEY
   commands:
-    - EXAMPLE=from_scratch pipeline/run_terraform.sh
-  when:
-    event:
-      - push
-    branch:
-      - master
-
-- name: terraform_destroy
-  image: sjmiller609/helm-kubectl-terraform:latest
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: AWS_ACCESS_KEY_ID
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: AWS_SECRET_ACCESS_KEY
-  commands:
-    - DESTROY=1 EXAMPLE=from_scratch pipeline/run_terraform.sh
+    - eval `ssh-agent`
+    - echo "$DEPLOY_KEY" | ssh-add -
+    - TAG=0.0.${DRONE_BUILD_NUMBER}
+    - git tag $TAG
+    - mkdir -p $HOME/.ssh
+    - ssh-keyscan -t rsa github.com >> $HOME/.ssh/known_hosts
+    - git push $DRONE_GIT_SSH_URL $DRONE_BRANCH --tags
   when:
     event:
       - push
     status:
-      - failure
       - success
     branch:
       - master
